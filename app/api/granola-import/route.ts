@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { saveContactToNotion } from "@/lib/notion-save";
 
 /**
  * POST /api/granola-import
@@ -79,62 +80,40 @@ ${transcript}
     const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     const extracted = JSON.parse(jsonStr);
 
-    // Save to Notion
-    // Role includes company inline: "Title at Company"
-    const roleValue = extracted.role && extracted.company
-      ? `${extracted.role} at ${extracted.company}`
-      : extracted.role || extracted.company || "";
-
-    const notionBody: Record<string, unknown> = {
-      parent: { database_id: databaseId },
-      properties: {
-        Name: { title: [{ text: { content: extracted.name } }] },
-        Role: { rich_text: [{ text: { content: roleValue } }] },
-        "Follow Up": { date: { start: extracted.followUpDate } },
-        "Key Note": { rich_text: [{ text: { content: extracted.keyNote || "" } }] },
-        "Next steps": { rich_text: [{ text: { content: (extracted.topics || []).join(", ") } }] },
+    // Save to Notion — schema is fetched dynamically so unknown columns are skipped
+    const transcriptBlocks = [
+      {
+        object: "block",
+        type: "heading_3",
+        heading_3: { rich_text: [{ text: { content: "Granola Meeting Transcript" } }] },
       },
-      children: [
-        {
-          object: "block",
-          type: "heading_3",
-          heading_3: { rich_text: [{ text: { content: "Granola Meeting Transcript" } }] },
+      {
+        object: "block",
+        type: "callout",
+        callout: {
+          rich_text: [{ text: { content: `Meeting: ${title}\nDate: ${date ?? today}\nMeeting ID: ${meetingId ?? "n/a"}` } }],
+          icon: { emoji: "☕" },
         },
-        {
-          object: "block",
-          type: "callout",
-          callout: {
-            rich_text: [{ text: { content: `Meeting: ${title}\nDate: ${date ?? today}\nMeeting ID: ${meetingId ?? "n/a"}` } }],
-            icon: { emoji: "☕" },
-          },
-        },
-        {
-          object: "block",
-          type: "paragraph",
-          paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
-        },
-      ],
-    };
-
-    const notionRes = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${notionToken}`,
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
       },
-      body: JSON.stringify(notionBody),
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
+      },
+    ];
+
+    const notionPage = await saveContactToNotion(notionToken, databaseId, {
+      name: extracted.name,
+      company: extracted.company,
+      role: extracted.role,
+      topics: extracted.topics,
+      followUpDate: extracted.followUpDate,
+      keyNote: extracted.keyNote,
+      transcriptBlocks,
     });
 
-    if (!notionRes.ok) {
-      const notionErr = await notionRes.json();
-      throw new Error(`Notion error: ${JSON.stringify(notionErr)}`);
-    }
-
-    const notionPage = await notionRes.json();
-
     const contact = {
-      id: (notionPage as { id: string }).id,
+      id: notionPage.id,
       ...extracted,
       source: "granola",
       transcript: transcript.slice(0, 500),
