@@ -37,20 +37,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Role includes company inline: "Title at Company"
+    const roleValue = role && company ? `${role} at ${company}` : role || company || "";
+
     const properties: Record<string, unknown> = {
       Name: {
         title: [{ text: { content: name } }],
       },
-      Company: {
-        rich_text: [{ text: { content: company } }],
-      },
       Role: {
-        rich_text: [{ text: { content: role || "" } }],
+        rich_text: [{ text: { content: roleValue } }],
       },
       Topics: {
         multi_select: (topics || []).map((t: string) => ({ name: t })),
       },
-      "Follow-up Date": {
+      "Follow Up": {
         date: { start: followUpDate },
       },
       "Key Note": {

@@ -80,14 +80,18 @@ ${transcript}
     const extracted = JSON.parse(jsonStr);
 
     // Save to Notion
+    // Role includes company inline: "Title at Company"
+    const roleValue = extracted.role && extracted.company
+      ? `${extracted.role} at ${extracted.company}`
+      : extracted.role || extracted.company || "";
+
     const notionBody: Record<string, unknown> = {
       parent: { database_id: databaseId },
       properties: {
         Name: { title: [{ text: { content: extracted.name } }] },
-        Company: { rich_text: [{ text: { content: extracted.company || "" } }] },
-        Role: { rich_text: [{ text: { content: extracted.role || "" } }] },
+        Role: { rich_text: [{ text: { content: roleValue } }] },
         Topics: { multi_select: (extracted.topics || []).map((t: string) => ({ name: t })) },
-        "Follow-up Date": { date: { start: extracted.followUpDate } },
+        "Follow Up": { date: { start: extracted.followUpDate } },
         "Key Note": { rich_text: [{ text: { content: extracted.keyNote || "" } }] },
       },
       children: [
@@ -112,8 +116,6 @@ ${transcript}
       ],
     };
 
-    // Try with all properties; if Notion rejects unknown props, fall back to name-only
-    let notionPage: Record<string, unknown> | null = null;
     const notionRes = await fetch("https://api.notion.com/v1/pages", {
       method: "POST",
       headers: {
@@ -124,49 +126,12 @@ ${transcript}
       body: JSON.stringify(notionBody),
     });
 
-    if (notionRes.ok) {
-      notionPage = await notionRes.json();
-    } else {
-      // Fallback: save with only the Name title property
-      const fallbackRes = await fetch("https://api.notion.com/v1/pages", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${notionToken}`,
-          "Content-Type": "application/json",
-          "Notion-Version": "2022-06-28",
-        },
-        body: JSON.stringify({
-          parent: { database_id: databaseId },
-          properties: {
-            Name: { title: [{ text: { content: extracted.name } }] },
-          },
-          children: [
-            {
-              object: "block",
-              type: "heading_3",
-              heading_3: { rich_text: [{ text: { content: "Contact Info (from Granola)" } }] },
-            },
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: {
-                rich_text: [{
-                  text: {
-                    content: `Company: ${extracted.company}\nRole: ${extracted.role}\nTopics: ${(extracted.topics || []).join(", ")}\nFollow-up: ${extracted.followUpDate}\n\n${extracted.keyNote}`,
-                  },
-                }],
-              },
-            },
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
-            },
-          ],
-        }),
-      });
-      notionPage = await fallbackRes.json();
+    if (!notionRes.ok) {
+      const notionErr = await notionRes.json();
+      throw new Error(`Notion error: ${JSON.stringify(notionErr)}`);
     }
+
+    const notionPage = await notionRes.json();
 
     const contact = {
       id: (notionPage as { id: string }).id,
