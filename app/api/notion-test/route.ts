@@ -21,7 +21,7 @@ export async function GET() {
   const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
     headers: {
       Authorization: `Bearer ${notionToken}`,
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2025-09-03",
     },
   });
 
