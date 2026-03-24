@@ -178,7 +178,8 @@ ${transcript}
 
     return Response.json({ contact });
   } catch (err) {
-    console.error("[/api/granola-import]", err);
-    return Response.json({ error: "Granola import failed" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[/api/granola-import]", message);
+    return Response.json({ error: message }, { status: 500 });
   }
 }

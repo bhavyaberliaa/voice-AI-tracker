@@ -83,8 +83,9 @@ export default function GranolaPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Import failed");
-      const { contact } = await res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import failed");
+      const { contact } = data;
 
       setResults((prev) => ({
         ...prev,
