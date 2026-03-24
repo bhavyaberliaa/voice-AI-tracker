@@ -88,7 +88,7 @@ function mapPageToContact(page: NotionPage) {
     name,
     company,
     role,
-    topics: p["Topics"]?.multi_select?.map((s) => s.name) ?? [],
+    topics: getText(p["Next steps"]).split(", ").filter(Boolean),
     followUpDate,
     keyNote: getText(p["Key Note"]),
     source: "voice" as const,

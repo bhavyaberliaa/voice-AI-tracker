@@ -47,14 +47,14 @@ export async function POST(req: NextRequest) {
       Role: {
         rich_text: [{ text: { content: roleValue } }],
       },
-      Topics: {
-        multi_select: (topics || []).map((t: string) => ({ name: t })),
-      },
       "Follow Up": {
         date: { start: followUpDate },
       },
       "Key Note": {
         rich_text: [{ text: { content: keyNote || "" } }],
+      },
+      "Next steps": {
+        rich_text: [{ text: { content: (topics || []).join(", ") } }],
       },
     };
 

@@ -90,9 +90,9 @@ ${transcript}
       properties: {
         Name: { title: [{ text: { content: extracted.name } }] },
         Role: { rich_text: [{ text: { content: roleValue } }] },
-        Topics: { multi_select: (extracted.topics || []).map((t: string) => ({ name: t })) },
         "Follow Up": { date: { start: extracted.followUpDate } },
         "Key Note": { rich_text: [{ text: { content: extracted.keyNote || "" } }] },
+        "Next steps": { rich_text: [{ text: { content: (extracted.topics || []).join(", ") } }] },
       },
       children: [
         {
