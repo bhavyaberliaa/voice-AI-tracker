@@ -110,13 +110,16 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
       formData.append("audio", audioBlob, `recording.${ext}`);
       formData.append("filename", `recording.${ext}`);
 
-      setStage("transcribing");
       const submitRes = await fetch("/api/transcribe", { method: "POST", body: formData });
       if (!submitRes.ok) {
         const e = await submitRes.json();
-        throw new Error(e.error ?? "Transcription failed");
+        throw new Error(e.error ?? "Upload failed");
       }
-      const { transcript: text } = await submitRes.json();
+      const { transcriptId } = await submitRes.json();
+
+      // Step 2: Poll for completion
+      setStage("transcribing");
+      const text = await pollTranscript(transcriptId);
       setTranscript(text);
 
       // Step 3: Extract contact info with Claude
@@ -137,6 +140,18 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setStage("error");
     }
+  };
+
+  const pollTranscript = async (transcriptId: string): Promise<string> => {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const res = await fetch(`/api/transcribe/${transcriptId}`);
+      const data = await res.json();
+
+      if (data.status === "completed") return data.transcript ?? "";
+      if (data.status === "error") throw new Error(`Transcription error: ${data.error}`);
+    }
+    throw new Error("Transcription timed out. Please try again.");
   };
 
   // -------------------------------------------------------------------------
@@ -185,7 +200,7 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
 
   const stageLabel: Partial<Record<Stage, string>> = {
     uploading: "Uploading audio…",
-    transcribing: "Transcribing…",
+    transcribing: "Transcribing with AssemblyAI…",
     extracting: "Extracting contact info…",
     saving: "Saving to Notion…",
   };
