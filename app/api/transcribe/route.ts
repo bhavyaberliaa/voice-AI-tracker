@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Submit transcription request
-    const transcriptBody = { audio_url: upload_url };
+    const transcriptBody = { audio_url: upload_url, speech_model: "universal-2" };
     console.log("[/api/transcribe] submitting transcript with body:", JSON.stringify(transcriptBody));
 
     const transcriptRes = await fetch("https://api.assemblyai.com/v2/transcript", {
