@@ -104,21 +104,19 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
 
   const processAudio = async (audioBlob: Blob, mimeType: string) => {
     try {
-      // Step 1: Upload + submit transcription job
+      // Step 1: Transcribe with Whisper (synchronous — no polling needed)
       const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
       const formData = new FormData();
       formData.append("audio", audioBlob, `recording.${ext}`);
+      formData.append("filename", `recording.${ext}`);
 
+      setStage("transcribing");
       const submitRes = await fetch("/api/transcribe", { method: "POST", body: formData });
       if (!submitRes.ok) {
         const e = await submitRes.json();
-        throw new Error(e.error ?? "Upload failed");
+        throw new Error(e.error ?? "Transcription failed");
       }
-      const { transcriptId } = await submitRes.json();
-
-      // Step 2: Poll for completion
-      setStage("transcribing");
-      const text = await pollTranscript(transcriptId);
+      const { transcript: text } = await submitRes.json();
       setTranscript(text);
 
       // Step 3: Extract contact info with Claude
@@ -139,19 +137,6 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setStage("error");
     }
-  };
-
-  const pollTranscript = async (transcriptId: string): Promise<string> => {
-    for (let attempt = 0; attempt < 60; attempt++) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const res = await fetch(`/api/transcribe/${transcriptId}`);
-      const data = await res.json();
-
-      if (data.status === "completed") return data.transcript ?? "";
-      if (data.status === "error") throw new Error(`Transcription error: ${data.error}`);
-      // status is "queued" or "processing" — keep polling
-    }
-    throw new Error("Transcription timed out. Please try again.");
   };
 
   // -------------------------------------------------------------------------
@@ -200,7 +185,7 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
 
   const stageLabel: Partial<Record<Stage, string>> = {
     uploading: "Uploading audio…",
-    transcribing: "Transcribing with AssemblyAI…",
+    transcribing: "Transcribing…",
     extracting: "Extracting contact info…",
     saving: "Saving to Notion…",
   };

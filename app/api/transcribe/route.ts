@@ -1,11 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
  * POST /api/transcribe
  *
- * Uploads audio to AssemblyAI and submits a transcription request.
- * Returns a transcriptId immediately — client polls /api/transcribe/[id] for status.
- * Split into two steps so this request never exceeds Vercel's function timeout.
+ * Transcribes audio using OpenAI Whisper.
+ * Returns { transcript } directly — no polling needed.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -13,49 +12,37 @@ export async function POST(req: NextRequest) {
     const audioFile = formData.get("audio") as Blob | null;
 
     if (!audioFile) {
-      return Response.json({ error: "No audio file provided" }, { status: 400 });
+      return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
     }
 
-    const apiKey = process.env.ASSEMBLYAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: "AssemblyAI API key not configured" }, { status: 500 });
+      return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 });
     }
 
-    // 1. Upload audio
-    const uploadRes = await fetch("https://api.assemblyai.com/v2/upload", {
+    const whisperForm = new FormData();
+    // Whisper needs a filename with an extension it recognises
+    const fileName = (formData.get("filename") as string | null) ?? "recording.webm";
+    whisperForm.append("file", audioFile, fileName);
+    whisperForm.append("model", "whisper-1");
+
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
-      headers: {
-        authorization: apiKey,
-        "content-type": "application/octet-stream",
-      },
-      body: audioFile,
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: whisperForm,
     });
 
-    if (!uploadRes.ok) {
-      throw new Error(`AssemblyAI upload failed: ${uploadRes.statusText}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        `Whisper transcription failed: ${err.error?.message ?? res.statusText}`
+      );
     }
 
-    const { upload_url } = await uploadRes.json();
-
-    // 2. Submit transcription request — returns immediately with an ID
-    const transcriptRes = await fetch("https://api.assemblyai.com/v2/transcript", {
-      method: "POST",
-      headers: {
-        authorization: apiKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ audio_url: upload_url }),
-    });
-
-    if (!transcriptRes.ok) {
-      throw new Error(`AssemblyAI transcript submit failed: ${transcriptRes.statusText}`);
-    }
-
-    const { id: transcriptId } = await transcriptRes.json();
-
-    return Response.json({ transcriptId });
+    const { text } = await res.json();
+    return NextResponse.json({ transcript: text });
   } catch (err) {
     console.error("[/api/transcribe]", err);
-    return Response.json({ error: "Transcription failed" }, { status: 500 });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
