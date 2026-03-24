@@ -25,7 +25,7 @@ export async function saveContactToNotion(
   const schemaRes = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
     headers: {
       Authorization: `Bearer ${notionToken}`,
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2025-09-03",
     },
   });
 
@@ -87,7 +87,7 @@ export async function saveContactToNotion(
     headers: {
       Authorization: `Bearer ${notionToken}`,
       "Content-Type": "application/json",
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2025-09-03",
     },
     body: JSON.stringify({
       parent: { database_id: databaseId },
