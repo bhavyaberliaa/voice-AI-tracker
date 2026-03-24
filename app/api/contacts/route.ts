@@ -75,17 +75,23 @@ function mapPageToContact(page: NotionPage) {
 
   // Follow-up date falls back to today if missing
   const followUpDate =
-    p["Follow-up Date"]?.date?.start ?? new Date().toISOString().split("T")[0];
+    p["Follow Up"]?.date?.start ?? new Date().toISOString().split("T")[0];
+
+  // Role is stored as "Title at Company" — split for display
+  const roleRaw = getText(p["Role"]);
+  const atIndex = roleRaw.indexOf(" at ");
+  const role = atIndex > -1 ? roleRaw.slice(0, atIndex) : roleRaw;
+  const company = atIndex > -1 ? roleRaw.slice(atIndex + 4) : "";
 
   return {
     id: page.id,
     name,
-    company: getText(p["Company"]),
-    role: getText(p["Role"]),
-    topics: p["Topics"]?.multi_select?.map((s) => s.name) ?? [],
+    company,
+    role,
+    topics: getText(p["Next steps"]).split(", ").filter(Boolean),
     followUpDate,
     keyNote: getText(p["Key Note"]),
-    source: getText(p["Source"]) || "voice",
+    source: "voice" as const,
     createdAt: page.created_time,
   };
 }

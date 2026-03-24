@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { saveContactToNotion } from "@/lib/notion-save";
 
 /**
  * POST /api/granola-import
@@ -79,97 +80,40 @@ ${transcript}
     const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     const extracted = JSON.parse(jsonStr);
 
-    // Save to Notion
-    const notionBody: Record<string, unknown> = {
-      parent: { database_id: databaseId },
-      properties: {
-        Name: { title: [{ text: { content: extracted.name } }] },
-        Company: { rich_text: [{ text: { content: extracted.company || "" } }] },
-        Role: { rich_text: [{ text: { content: extracted.role || "" } }] },
-        Topics: { multi_select: (extracted.topics || []).map((t: string) => ({ name: t })) },
-        "Follow-up Date": { date: { start: extracted.followUpDate } },
-        "Key Note": { rich_text: [{ text: { content: extracted.keyNote || "" } }] },
+    // Save to Notion — schema is fetched dynamically so unknown columns are skipped
+    const transcriptBlocks = [
+      {
+        object: "block",
+        type: "heading_3",
+        heading_3: { rich_text: [{ text: { content: "Granola Meeting Transcript" } }] },
       },
-      children: [
-        {
-          object: "block",
-          type: "heading_3",
-          heading_3: { rich_text: [{ text: { content: "Granola Meeting Transcript" } }] },
+      {
+        object: "block",
+        type: "callout",
+        callout: {
+          rich_text: [{ text: { content: `Meeting: ${title}\nDate: ${date ?? today}\nMeeting ID: ${meetingId ?? "n/a"}` } }],
+          icon: { emoji: "☕" },
         },
-        {
-          object: "block",
-          type: "callout",
-          callout: {
-            rich_text: [{ text: { content: `Meeting: ${title}\nDate: ${date ?? today}\nMeeting ID: ${meetingId ?? "n/a"}` } }],
-            icon: { emoji: "☕" },
-          },
-        },
-        {
-          object: "block",
-          type: "paragraph",
-          paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
-        },
-      ],
-    };
+      },
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
+      },
+    ];
 
-    // Try with all properties; if Notion rejects unknown props, fall back to name-only
-    let notionPage: Record<string, unknown> | null = null;
-    const notionRes = await fetch("https://api.notion.com/v1/pages", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${notionToken}`,
-        "Content-Type": "application/json",
-        "Notion-Version": "2022-06-28",
-      },
-      body: JSON.stringify(notionBody),
+    const notionPage = await saveContactToNotion(notionToken, databaseId, {
+      name: extracted.name,
+      company: extracted.company,
+      role: extracted.role,
+      topics: extracted.topics,
+      followUpDate: extracted.followUpDate,
+      keyNote: extracted.keyNote,
+      transcriptBlocks,
     });
 
-    if (notionRes.ok) {
-      notionPage = await notionRes.json();
-    } else {
-      // Fallback: save with only the Name title property
-      const fallbackRes = await fetch("https://api.notion.com/v1/pages", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${notionToken}`,
-          "Content-Type": "application/json",
-          "Notion-Version": "2022-06-28",
-        },
-        body: JSON.stringify({
-          parent: { database_id: databaseId },
-          properties: {
-            Name: { title: [{ text: { content: extracted.name } }] },
-          },
-          children: [
-            {
-              object: "block",
-              type: "heading_3",
-              heading_3: { rich_text: [{ text: { content: "Contact Info (from Granola)" } }] },
-            },
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: {
-                rich_text: [{
-                  text: {
-                    content: `Company: ${extracted.company}\nRole: ${extracted.role}\nTopics: ${(extracted.topics || []).join(", ")}\nFollow-up: ${extracted.followUpDate}\n\n${extracted.keyNote}`,
-                  },
-                }],
-              },
-            },
-            {
-              object: "block",
-              type: "paragraph",
-              paragraph: { rich_text: [{ text: { content: transcript.slice(0, 2000) } }] },
-            },
-          ],
-        }),
-      });
-      notionPage = await fallbackRes.json();
-    }
-
     const contact = {
-      id: (notionPage as { id: string }).id,
+      id: notionPage.id,
       ...extracted,
       source: "granola",
       transcript: transcript.slice(0, 500),
@@ -178,7 +122,8 @@ ${transcript}
 
     return Response.json({ contact });
   } catch (err) {
-    console.error("[/api/granola-import]", err);
-    return Response.json({ error: "Granola import failed" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[/api/granola-import]", message);
+    return Response.json({ error: message }, { status: 500 });
   }
 }

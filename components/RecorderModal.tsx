@@ -104,10 +104,11 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
 
   const processAudio = async (audioBlob: Blob, mimeType: string) => {
     try {
-      // Step 1: Upload + submit transcription job
+      // Step 1: Transcribe with Whisper (synchronous — no polling needed)
       const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
       const formData = new FormData();
       formData.append("audio", audioBlob, `recording.${ext}`);
+      formData.append("filename", `recording.${ext}`);
 
       const submitRes = await fetch("/api/transcribe", { method: "POST", body: formData });
       if (!submitRes.ok) {
@@ -149,7 +150,6 @@ export default function RecorderModal({ onClose, onContactSaved }: RecorderModal
 
       if (data.status === "completed") return data.transcript ?? "";
       if (data.status === "error") throw new Error(`Transcription error: ${data.error}`);
-      // status is "queued" or "processing" — keep polling
     }
     throw new Error("Transcription timed out. Please try again.");
   };
